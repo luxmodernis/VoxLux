@@ -17,7 +17,7 @@ app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024 * 1024  # 4 GB
 UPLOAD_DIR = tempfile.mkdtemp(prefix='voxlux_')
 
 # ─── Mise à jour automatique (GitHub Releases) ───────────────────────────────
-APP_VERSION  = "1.0.0"
+APP_VERSION  = "1.0.1"
 GITHUB_REPO  = "luxmodernis/VoxLux"
 
 def _version_tuple(v):
@@ -348,6 +348,11 @@ def transcribe():
         # Évite qu'une fenêtre incertaine ne fasse "dérailler" les suivantes
         # (cause fréquente de passages entiers sautés au milieu d'une transcription).
         opts['condition_on_previous_text'] = False
+        # Rend Whisper moins prompt à classer un passage "silence" (et donc à le
+        # sauter entièrement) quand il n'est pas très confiant — voix faible,
+        # accent, bruit de fond. Toujours probabiliste : n'élimine pas 100% des cas.
+        opts['no_speech_threshold'] = 0.3   # défaut 0.6 — plus bas = moins de sauts pour "silence"
+        opts['logprob_threshold']   = -1.5  # défaut -1.0 — accepte des passages moins confiants
         lexicon = data.get('lexicon', '').strip()
         if lexicon:
             opts['initial_prompt'] = lexicon
