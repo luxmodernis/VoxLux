@@ -17,7 +17,7 @@ app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024 * 1024  # 4 GB
 UPLOAD_DIR = tempfile.mkdtemp(prefix='voxlux_')
 
 # ─── Mise à jour automatique (GitHub Releases) ───────────────────────────────
-APP_VERSION  = "1.0.1"
+APP_VERSION  = "1.0.2"
 GITHUB_REPO  = "luxmodernis/VoxLux"
 
 def _version_tuple(v):
