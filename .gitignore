@@ -1,0 +1,4 @@
+.DS_Store
+.voxlux_env/
+__pycache__/
+*.pyc
