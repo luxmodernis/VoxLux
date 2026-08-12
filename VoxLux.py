@@ -17,7 +17,7 @@ app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024 * 1024  # 4 GB
 UPLOAD_DIR = tempfile.mkdtemp(prefix='voxlux_')
 
 # ─── Mise à jour automatique (GitHub Releases) ───────────────────────────────
-APP_VERSION  = "1.0.2"
+APP_VERSION  = "1.0.3"
 GITHUB_REPO  = "luxmodernis/VoxLux"
 
 def _version_tuple(v):
@@ -87,6 +87,11 @@ def load_audio(path, sr=16000):
 
 # ─── Traitement des segments ──────────────────────────────────────────────────
 
+def norm_text(s):
+    """Whisper produit parfois des espaces doubles/internes dans son texte
+    décodé (artefact du tokenizer) — on les normalise systématiquement."""
+    return re.sub(r'\s+', ' ', s or '').strip()
+
 def split_segment(seg, max_chars=80):
     """Découpe un segment trop long en sous-segments (récursif)."""
     text = seg['text'].strip()
@@ -122,14 +127,16 @@ def smart_split_words(words, min_pause=0.4, max_chars=60, min_duration=1.2):
     current = [words[0]]
     for word in words[1:]:
         pause = word['start'] - current[-1]['end']
-        preview = ' '.join(w['word'] for w in current + [word]).strip()
+        preview = ''.join(w['word'] for w in current + [word]).strip()
         cut = (
             pause >= min_pause or
             len(preview) > max_chars or
             (pause >= 0.15 and current[-1]['word'].rstrip().endswith(('.', '!', '?', ';')))
         )
         if cut:
-            text = ' '.join(w['word'] for w in current).strip()
+            # Les mots portent déjà leur propre espace en tête (convention Whisper) :
+            # les concaténer directement, PUIS normaliser (garde-fou si absent).
+            text = norm_text(''.join(w['word'] for w in current))
             segments.append({'start': round(current[0]['start'], 2),
                              'end':   round(current[-1]['end'], 2),
                              'text':  text})
@@ -137,7 +144,7 @@ def smart_split_words(words, min_pause=0.4, max_chars=60, min_duration=1.2):
         else:
             current.append(word)
     if current:
-        text = ' '.join(w['word'] for w in current).strip()
+        text = norm_text(''.join(w['word'] for w in current))
         segments.append({'start': round(current[0]['start'], 2),
                          'end':   round(current[-1]['end'], 2),
                          'text':  text})
@@ -369,7 +376,7 @@ def transcribe():
                 'id': i,
                 'start': round(s['start'], 2),
                 'end': round(s['end'], 2),
-                'text': s['text'].strip(),
+                'text': norm_text(s['text']),
             }
             segs.extend(split_segment(raw))
         for i, s in enumerate(segs):
@@ -420,7 +427,7 @@ def retranscribe_segment():
         lexicon = (data.get('lexicon') or '').strip()
         opts = whisper_opts(langue, lexicon, word_timestamps=False)
         result = model.transcribe(clip, **opts, verbose=False)
-        text = ' '.join(s['text'].strip() for s in result.get('segments', [])).strip()
+        text = norm_text(' '.join(s['text'].strip() for s in result.get('segments', [])))
         return jsonify({'text': text})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -2000,7 +2007,7 @@ function applyProjectData(data, msg) {
   trs = data.trs || {};
   detectedLang = data.detectedLang || '';
   window.__voxluxSourceName = data.sourceFilename || '';
-  projectFilename = data.__filename || '';
+  projectFilename = data.__filename || data.filename || '';
   projectSavedOnce = true;   // un fichier existe déjà (ce chargement en est la preuve)
   resumeMode = true;
 
@@ -2048,10 +2055,21 @@ document.getElementById('resume-project-btn').addEventListener('click', () => {
 document.getElementById('project-finput').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     let data;
     try { data = JSON.parse(reader.result); } catch (err) { toast('❌ Fichier projet invalide'); return; }
     if (!data.segs) { toast('❌ Fichier projet invalide'); return; }
+    // Un import manuel n'a pas de référence au fichier serveur d'origine —
+    // on la retrouve par nom pour continuer à écrire sur LE MÊME fichier
+    // au lieu d'en créer un doublon (…(2), …(3)) à chaque sauvegarde.
+    if (data.name) {
+      try {
+        const res = await fetch('/api/project/list');
+        const list = (await res.json()).projects || [];
+        const match = list.find(p => p.name === data.name);
+        if (match) data.__filename = match.filename;
+      } catch (err) { /* liste indisponible — tant pis, on créera un nouveau fichier */ }
+    }
     applyProjectData(data);
   };
   reader.readAsText(f);
@@ -2176,6 +2194,7 @@ function buildProjectSnapshot() {
   return {
     version: 1,
     name: projectName,
+    filename: projectFilename || undefined, // permet de retrouver LE MÊME fichier serveur à la reprise
     savedAt: new Date().toISOString(),
     sourceFilename: selectedFile ? selectedFile.name : (window.__voxluxSourceName || ''),
     detectedLang, segs, words, trs
