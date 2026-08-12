@@ -328,34 +328,40 @@ def serve_media(fid):
 
     return send_file(path, mimetype=mime, conditional=True)
 
+def whisper_opts(langue, lexicon, word_timestamps=True):
+    opts = {'task': 'transcribe', 'word_timestamps': word_timestamps}
+    if langue and langue != 'auto':
+        opts['language'] = langue
+    # Évite qu'une fenêtre incertaine ne fasse "dérailler" les suivantes
+    # (cause fréquente de passages entiers sautés au milieu d'une transcription).
+    opts['condition_on_previous_text'] = False
+    # Rend Whisper moins prompt à classer un passage "silence" (et donc à le
+    # sauter entièrement) quand il n'est pas très confiant — voix faible,
+    # accent, bruit de fond. Toujours probabiliste : n'élimine pas 100% des cas.
+    opts['no_speech_threshold'] = 0.3   # défaut 0.6 — plus bas = moins de sauts pour "silence"
+    opts['logprob_threshold']   = -1.5  # défaut -1.0 — accepte des passages moins confiants
+    if lexicon:
+        opts['initial_prompt'] = lexicon
+    return opts
+
+def find_upload_path(fid):
+    return next(
+        (os.path.join(UPLOAD_DIR, n) for n in os.listdir(UPLOAD_DIR) if n.startswith(fid)),
+        None
+    )
+
 @app.route('/api/transcribe', methods=['POST'])
 def transcribe():
     data = request.json
     fid = data.get('file_id')
     langue = data.get('langue', 'fr')
-    path = next(
-        (os.path.join(UPLOAD_DIR, n) for n in os.listdir(UPLOAD_DIR) if n.startswith(fid)),
-        None
-    )
+    path = find_upload_path(fid)
     if not path:
         return jsonify({'error': 'Fichier introuvable'}), 404
     try:
         audio = load_audio(path)
-        opts = {'task': 'transcribe'}
-        if langue != 'auto':
-            opts['language'] = langue
-        opts['word_timestamps'] = True
-        # Évite qu'une fenêtre incertaine ne fasse "dérailler" les suivantes
-        # (cause fréquente de passages entiers sautés au milieu d'une transcription).
-        opts['condition_on_previous_text'] = False
-        # Rend Whisper moins prompt à classer un passage "silence" (et donc à le
-        # sauter entièrement) quand il n'est pas très confiant — voix faible,
-        # accent, bruit de fond. Toujours probabiliste : n'élimine pas 100% des cas.
-        opts['no_speech_threshold'] = 0.3   # défaut 0.6 — plus bas = moins de sauts pour "silence"
-        opts['logprob_threshold']   = -1.5  # défaut -1.0 — accepte des passages moins confiants
         lexicon = data.get('lexicon', '').strip()
-        if lexicon:
-            opts['initial_prompt'] = lexicon
+        opts = whisper_opts(langue, lexicon)
         result = model.transcribe(audio, **opts, verbose=False)
         segs = []
         for i, s in enumerate(result.get('segments', [])):
@@ -380,6 +386,42 @@ def transcribe():
         return jsonify({'segments': segs, 'words': words, 'detected_language': result.get('language', '')})
     except FileNotFoundError as e:
         return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/retranscribe_segment', methods=['POST'])
+def retranscribe_segment():
+    """Relance Whisper uniquement sur la plage [start, end] d'une ligne.
+    Utile quand un passage a été sauté ou mal transcrit lors de la
+    transcription complète — Whisper étant probabiliste, une nouvelle
+    tentative isolée sur ce seul passage donne souvent un meilleur résultat."""
+    data = request.json or {}
+    fid = data.get('file_id')
+    try:
+        start = float(data.get('start', 0))
+        end = float(data.get('end', 0))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Timecodes invalides'}), 400
+    if end <= start:
+        return jsonify({'error': 'Plage de temps invalide'}), 400
+    path = find_upload_path(fid)
+    if not path:
+        return jsonify({'error': 'Fichier audio introuvable — relancez une transcription complète'}), 404
+    try:
+        audio = load_audio(path)
+        sr = 16000
+        pad = 0.4  # petit contexte avant/après pour aider Whisper à bien démarrer/finir
+        i0 = max(0, int((start - pad) * sr))
+        i1 = min(len(audio), int((end + pad) * sr))
+        clip = audio[i0:i1]
+        if len(clip) < int(sr * 0.2):
+            return jsonify({'error': 'Plage trop courte pour être retranscrite'}), 400
+        langue  = data.get('langue', 'fr')
+        lexicon = (data.get('lexicon') or '').strip()
+        opts = whisper_opts(langue, lexicon, word_timestamps=False)
+        result = model.transcribe(clip, **opts, verbose=False)
+        text = ' '.join(s['text'].strip() for s in result.get('segments', [])).strip()
+        return jsonify({'text': text})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1212,13 +1254,15 @@ HTML = """<!DOCTYPE html>
     }
     textarea.tt.warn { border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.04); }
 
-    td.tdel { width: 28px; }
-    .delbtn {
+    td.tdel { width: 52px; white-space: nowrap; }
+    .delbtn, .rebtn {
       background: none; border: none; color: rgba(255,255,255,0.2);
       cursor: pointer; font-size: 0.9em; padding: 3px 5px;
       border-radius: 4px; line-height: 1; transition: all 0.15s;
     }
     .delbtn:hover { color: #f87171; background: rgba(248,113,113,0.1); }
+    .rebtn:hover  { color: #a78bfa; background: rgba(167,139,250,0.12); }
+    .rebtn:disabled { opacity: 0.4; cursor: default; }
 
     /* Footer étape 2 */
     .p2-footer {
@@ -1741,6 +1785,8 @@ let words       = [];
 let media       = null;
 let trs         = {};
 let detectedLang = '';
+let currentLangue  = 'fr';  // langue utilisée à la transcription — réutilisée pour "Retranscrire ce passage"
+let currentLexicon = '';
 
 const LANG_NAMES = {
   'fr':'Français','en':'English','es':'Español','it':'Italiano',
@@ -2233,6 +2279,7 @@ document.getElementById('tbtn').addEventListener('click', async () => {
       document.getElementById('si2-label').textContent = 'Transcription · ' + detectedLang;
       const lbl = document.getElementById('export-lang-label');
       if (lbl) lbl.textContent = detectedLang;
+      currentLangue = detectedLang.toLowerCase();
     }
     document.getElementById('tbtn').disabled = false;
     toast('✅ Projet repris — ' + segs.length + ' segments');
@@ -2241,13 +2288,15 @@ document.getElementById('tbtn').addEventListener('click', async () => {
 
   status('Transcription en cours… (quelques minutes)', true);
 
+  currentLangue  = document.getElementById('slang').value;
+  currentLexicon = document.getElementById('lexicon-input').value.trim();
   try {
     const res = await fetch('/api/transcribe', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         file_id: fileId,
-        langue:  document.getElementById('slang').value,
-        lexicon: document.getElementById('lexicon-input').value.trim()
+        langue:  currentLangue,
+        lexicon: currentLexicon
       })
     });
     const td = await res.json();
@@ -2368,7 +2417,10 @@ function addRow(seg, idx, tbody) {
     '<td class="ttime"><input class="ti" data-f="start" value="' + fmtT(seg.start) + '"></td>' +
     '<td class="ttime"><input class="ti" data-f="end"   value="' + fmtT(seg.end)   + '"></td>' +
     '<td><textarea class="tt' + (warn?' warn':'') + '">' + esc(seg.text) + '</textarea></td>' +
-    '<td class="tdel"><button class="delbtn">✕</button></td>';
+    '<td class="tdel">' +
+      '<button class="rebtn" title="Retranscrire ce passage">&#127908;</button>' +
+      '<button class="delbtn" title="Supprimer">✕</button>' +
+    '</td>';
 
   tr.addEventListener('click', e => {
     activeRowIndex = parseInt(tr.dataset.idx);
@@ -2445,6 +2497,36 @@ function addRow(seg, idx, tbody) {
     }
     renderTable();
   });
+
+  tr.querySelector('.rebtn').addEventListener('click', async e => {
+    e.stopPropagation();
+    const i = parseInt(tr.dataset.idx);
+    const seg = segs[i];
+    if (!fileId) { toast('❌ Aucune vidéo chargée — glissez le fichier d’origine'); return; }
+    const btn = e.currentTarget;
+    const original = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '&#8987;';
+    try {
+      const res = await fetch('/api/retranscribe_segment', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_id: fileId, start: seg.start, end: seg.end,
+          langue: currentLangue, lexicon: currentLexicon
+        })
+      });
+      const data = await res.json();
+      if (data.error) { toast('❌ ' + data.error); return; }
+      if (!data.text) { toast('⚠️ Toujours rien détecté sur ce passage'); return; }
+      segs[i].text = data.text;
+      renderTable();
+      toast('🎙 Passage retranscrit');
+    } catch (err) {
+      toast('❌ ' + err.message);
+    } finally {
+      btn.disabled = false; btn.innerHTML = original;
+    }
+  });
+
   tbody.appendChild(tr);
 }
 
