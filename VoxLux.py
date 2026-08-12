@@ -1407,7 +1407,7 @@ HTML = """<!DOCTYPE html>
 
 <!-- ── Header ── -->
 <header>
-  <div class="logo">
+  <div class="logo" onclick="goHome()" title="Retour à l'accueil" style="cursor:pointer;">
     <div class="logo-gem"></div>
     VoxLux
   </div>
@@ -1793,6 +1793,16 @@ function stepClick(n) {
     if (!confirm("Retourner à l'Upload effacera la transcription en cours. Continuer ?")) return;
   }
   goTo(n);
+}
+
+// Clic sur le logo « VoxLux » : retour direct à l'écran d'accueil (Nouveau
+// projet / Ouvrir un projet), pas juste à l'étape 1.
+function goHome() {
+  if (segs.length > 0) {
+    if (!confirm("Retourner à l'accueil effacera la transcription en cours. Continuer ?")) return;
+  }
+  goTo(1);
+  showLanding();
 }
 
 // ── Quitter VoxLux ─────────────────────────────────────────────────────────
