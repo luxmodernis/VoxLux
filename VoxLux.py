@@ -2452,7 +2452,11 @@ function addRow(seg, idx, tbody) {
 
   const ta = tr.querySelector('textarea');
   autoResize(ta);
-  ta.addEventListener('click', e => e.stopPropagation());
+  ta.addEventListener('click', e => {
+    e.stopPropagation();
+    activeRowIndex = parseInt(tr.dataset.idx);
+    if (media) media.currentTime = segs[activeRowIndex].start;
+  });
   ta.addEventListener('input', () => {
     const i = parseInt(tr.dataset.idx);
     segs[i].text = ta.value;
