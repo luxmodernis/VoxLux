@@ -17,7 +17,7 @@ app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024 * 1024  # 4 GB
 UPLOAD_DIR = tempfile.mkdtemp(prefix='voxlux_')
 
 # ─── Mise à jour automatique (GitHub Releases) ───────────────────────────────
-APP_VERSION  = "1.0.5"
+APP_VERSION  = "1.0.6"
 GITHUB_REPO  = "luxmodernis/VoxLux"
 
 def _version_tuple(v):
@@ -627,6 +627,7 @@ HTML = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>VoxLux</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d0818'/%3E%3Crect x='20' y='20' width='24' height='24' rx='5' fill='url(%23g)' transform='rotate(45 32 32)'/%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23a78bfa'/%3E%3Cstop offset='1' stop-color='%23ec4899'/%3E%3C/linearGradient%3E%3C/defs%3E%3C/svg%3E">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
