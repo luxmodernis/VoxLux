@@ -17,7 +17,7 @@ app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024 * 1024  # 4 GB
 UPLOAD_DIR = tempfile.mkdtemp(prefix='voxlux_')
 
 # ─── Mise à jour automatique (GitHub Releases) ───────────────────────────────
-APP_VERSION  = "1.0.3"
+APP_VERSION  = "1.0.4"
 GITHUB_REPO  = "luxmodernis/VoxLux"
 
 def _version_tuple(v):
@@ -839,6 +839,13 @@ HTML = """<!DOCTYPE html>
     }
     .update-banner-dismiss:hover { color: rgba(167,243,208,0.9); }
 
+    .version-info {
+      margin-top: 10px; text-align: center;
+      font-size: 0.72em; font-weight: 700; letter-spacing: 0.02em;
+      color: rgba(255,255,255,0.18);
+    }
+    .version-info.up-to-date { color: rgba(52,211,153,0.5); }
+
     /* Écran d'accueil */
     .landing-choice {
       display: flex; flex-direction: column; gap: 12px; margin-top: 22px;
@@ -1517,6 +1524,7 @@ HTML = """<!DOCTYPE html>
       <span class="note-gem"></span>
       Traitement 100&#37; local &mdash; aucun fichier envoy&#233; sur internet
     </p>
+    <p class="version-info" id="version-info"></p>
   </div>
 
   <!-- Espace de travail : nouveau projet OU reprise (structure partagée) -->
@@ -2151,7 +2159,17 @@ async function checkForUpdate() {
     const res = await fetch('/api/update/check');
     data = await res.json();
   } catch (e) { return; }
-  if (!data || !data.available || !data.asset_url) return;
+  if (!data) return;
+
+  // Affiche toujours le numéro de version installée, avec le statut si connu.
+  const vEl = document.getElementById('version-info');
+  if (vEl && data.current) {
+    const upToDate = !data.available && !data.error;
+    vEl.textContent = 'VoxLux v' + data.current + (upToDate ? ' · à jour' : '');
+    vEl.classList.toggle('up-to-date', upToDate);
+  }
+
+  if (!data.available || !data.asset_url) return;
   pendingUpdate = data;
   document.getElementById('update-banner-text').textContent =
     '🔔 Mise à jour disponible — version ' + data.latest + ' (vous avez la ' + data.current + ')';
