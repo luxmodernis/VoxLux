@@ -17,7 +17,7 @@ app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024 * 1024  # 4 GB
 UPLOAD_DIR = tempfile.mkdtemp(prefix='voxlux_')
 
 # ─── Mise à jour automatique (GitHub Releases) ───────────────────────────────
-APP_VERSION  = "1.0.7"
+APP_VERSION  = "1.0.8"
 GITHUB_REPO  = "luxmodernis/VoxLux"
 
 def _version_tuple(v):
@@ -1284,7 +1284,9 @@ HTML = """<!DOCTYPE html>
     }
     textarea.tt.warn { border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.04); }
 
-    td.tdel { width: 52px; white-space: nowrap; }
+    /* padding-right : évite que le micro/la croix ne se superposent avec
+       la scrollbar de Safari, qui passe par-dessus le contenu à droite. */
+    td.tdel { width: 64px; padding-right: 14px; white-space: nowrap; }
     .delbtn, .rebtn {
       background: none; border: none; color: rgba(255,255,255,0.2);
       cursor: pointer; font-size: 0.9em; padding: 3px 5px;
@@ -1713,7 +1715,7 @@ HTML = """<!DOCTYPE html>
               <th style="width:70px">D&#233;but</th>
               <th style="width:70px">Fin</th>
               <th>Texte</th>
-              <th style="width:28px"></th>
+              <th style="width:64px"></th>
             </tr>
           </thead>
           <tbody id="stbody"></tbody>
