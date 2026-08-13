@@ -17,7 +17,7 @@ app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024 * 1024  # 4 GB
 UPLOAD_DIR = tempfile.mkdtemp(prefix='voxlux_')
 
 # ─── Mise à jour automatique (GitHub Releases) ───────────────────────────────
-APP_VERSION  = "1.0.4"
+APP_VERSION  = "1.0.5"
 GITHUB_REPO  = "luxmodernis/VoxLux"
 
 def _version_tuple(v):
@@ -2167,6 +2167,7 @@ async function checkForUpdate() {
     const upToDate = !data.available && !data.error;
     vEl.textContent = 'VoxLux v' + data.current + (upToDate ? ' · à jour' : '');
     vEl.classList.toggle('up-to-date', upToDate);
+    document.title = 'VoxLux v' + data.current;
   }
 
   if (!data.available || !data.asset_url) return;
