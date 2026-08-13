@@ -17,7 +17,7 @@ app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024 * 1024  # 4 GB
 UPLOAD_DIR = tempfile.mkdtemp(prefix='voxlux_')
 
 # ─── Mise à jour automatique (GitHub Releases) ───────────────────────────────
-APP_VERSION  = "1.0.6"
+APP_VERSION  = "1.0.7"
 GITHUB_REPO  = "luxmodernis/VoxLux"
 
 def _version_tuple(v):
@@ -273,6 +273,21 @@ def make_xlsx(segs):
 @app.route('/')
 def index():
     return HTML, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+# Certains navigateurs (barre latérale d'onglets Safari notamment) réclament
+# /favicon.ico directement plutôt que de lire la balise <link rel="icon">.
+FAVICON_SVG = (
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
+    "<rect width='64' height='64' rx='14' fill='#0d0818'/>"
+    "<rect x='20' y='20' width='24' height='24' rx='5' fill='url(#g)' transform='rotate(45 32 32)'/>"
+    "<defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>"
+    "<stop offset='0' stop-color='#a78bfa'/><stop offset='1' stop-color='#ec4899'/>"
+    "</linearGradient></defs></svg>"
+)
+
+@app.route('/favicon.ico')
+def favicon():
+    return FAVICON_SVG, 200, {'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-cache'}
 
 @app.route('/api/upload', methods=['POST'])
 def upload():
